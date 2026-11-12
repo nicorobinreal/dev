@@ -1,5 +1,5 @@
-dist/
-bin/
+/dist/
+/bin/
 /dev
 *.test
 coverage.out

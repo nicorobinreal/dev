@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# dev-sshd-keys: point the container's sshd at the persisted host keys and
+# authorized_keys that dev mounts at /run/secrets/ssh (from the VM's
+# ~/.config/dev/container-ssh/), then start sshd or make the running one reload.
+# Rebuilds therefore keep the container's SSH identity. Run as root by the
+# starter's postStartCommand on every container start; safe to re-run.
+set -euo pipefail
+
+src=${DEV_SSH_SECRETS:-/run/secrets/ssh}
+port=${DEV_SSHD_PORT:-2222}
+main=/etc/ssh/sshd_config
+dropin=/etc/ssh/sshd_config.d/dev.conf
+pidfile=/run/sshd.pid
+
+log() { echo "dev-sshd-keys: $*" >&2; }
+
+if [ "$(id -u)" -ne 0 ]; then
+	log "must run as root"
+	exit 1
+fi
+if [ ! -x /usr/sbin/sshd ]; then
+	log "sshd is not installed"
+	exit 1
+fi
+
+mkdir -p /etc/ssh/sshd_config.d /run/sshd /root/.ssh
+chmod 700 /root/.ssh
+
+# Host keys: copy ssh_host_*_key (+ .pub) into /etc/ssh with sshd's perms.
+hostkeys=()
+shopt -s nullglob
+for key in "$src"/ssh_host_*_key; do
+	name=$(basename "$key")
+	install -m 600 -o root -g root "$key" "/etc/ssh/$name"
+	if [ -f "$key.pub" ]; then
+		install -m 644 -o root -g root "$key.pub" "/etc/ssh/$name.pub"
+	else
+		ssh-keygen -y -f "/etc/ssh/$name" >"/etc/ssh/$name.pub"
+		chmod 644 "/etc/ssh/$name.pub"
+	fi
+	hostkeys+=("/etc/ssh/$name")
+done
+shopt -u nullglob
+if [ "${#hostkeys[@]}" -eq 0 ]; then
+	log "no host keys in $src; using generated ones (the SSH identity will change on rebuild)"
+	ssh-keygen -A >/dev/null
+fi
+
+if [ -f "$src/authorized_keys" ]; then
+	install -m 600 -o root -g root "$src/authorized_keys" /root/.ssh/authorized_keys
+else
+	log "no $src/authorized_keys; key logins to root will fail"
+fi
+
+# Main config: our drop-in must be read first (first value wins in sshd).
+# Port and HostKey accumulate rather than override, so they are taken out of
+# the main file and set only in the drop-in.
+if ! grep -qE '^[[:space:]]*Include[[:space:]]+/etc/ssh/sshd_config\.d/\*\.conf' "$main"; then
+	sed -i '1i Include /etc/ssh/sshd_config.d/*.conf' "$main"
+fi
+sed -i -E 's/^[[:space:]]*(Port[[:space:]].*)/# \1 (moved to dev.conf)/' "$main"
+if [ "${#hostkeys[@]}" -gt 0 ]; then
+	sed -i -E 's/^[[:space:]]*(HostKey[[:space:]].*)/# \1 (moved to dev.conf)/' "$main"
+fi
+
+tmp=$(mktemp "$dropin.XXXXXX")
+{
+	echo "# Written by dev-sshd-keys; rewritten on every container start."
+	echo "Port ${port}"
+	for k in "${hostkeys[@]}"; do
+		echo "HostKey $k"
+	done
+	echo "PermitRootLogin prohibit-password"
+	echo "PubkeyAuthentication yes"
+	echo "PasswordAuthentication no"
+	echo "KbdInteractiveAuthentication no"
+	echo "AuthorizedKeysFile .ssh/authorized_keys"
+} >"$tmp"
+chmod 644 "$tmp"
+mv "$tmp" "$dropin"
+
+if ! out=$(/usr/sbin/sshd -t 2>&1); then
+	log "invalid sshd config: $out"
+	exit 1
+fi
+
+# SIGHUP makes a running sshd re-exec with the new config and keys.
+if [ -s "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+	kill -HUP "$(cat "$pidfile")"
+else
+	/usr/sbin/sshd
+fi

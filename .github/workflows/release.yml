@@ -122,12 +122,13 @@ jobs:
 
   goreleaser:
     needs: [plan, starter-image-manifest]
-    # Run when the image was built, or when building was skipped because it's
-    # up to date; never after a failed image build.
+    # Run when the image was built, or when plan decided it's up to date.
+    # (A manifest job skipped because a build failed also reports 'skipped',
+    # so check plan's decision rather than the result alone.)
     if: >-
       always() &&
       needs.plan.result == 'success' &&
-      (needs.starter-image-manifest.result == 'success' || needs.starter-image-manifest.result == 'skipped')
+      (needs.starter-image-manifest.result == 'success' || needs.plan.outputs.build == 'false')
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
