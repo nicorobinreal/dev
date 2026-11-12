@@ -71,8 +71,9 @@ func newBrowserCmd(a *App) *cobra.Command {
 		},
 	})
 	var port int
+	var host string
 	bridge := &cobra.Command{
-		Use:    "bridge --port N -- <cmd...>",
+		Use:    "bridge --port N [--host H] -- <cmd...>",
 		Short:  "Run the stdio→Streamable HTTP MCP bridge (used by the launchd job)",
 		Hidden: true,
 		Args:   cobra.MinimumNArgs(1),
@@ -82,10 +83,11 @@ func newBrowserCmd(a *App) *cobra.Command {
 			}
 			ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 			defer stop()
-			return browser.Bridge(ctx, fmt.Sprintf("127.0.0.1:%d", port), args)
+			return browser.Bridge(ctx, fmt.Sprintf("127.0.0.1:%d", port), args, browser.Instructions(host))
 		},
 	}
 	bridge.Flags().IntVar(&port, "port", 0, "listen port on 127.0.0.1")
+	bridge.Flags().StringVar(&host, "host", "", "the project's Tailscale name, for the MCP instructions")
 	cmd.AddCommand(bridge)
 	return cmd
 }
@@ -137,7 +139,7 @@ func (a *App) browserGrant(ctx context.Context, name string) error {
 		}
 	}
 	ld := browser.NewLaunchd(a.Runner, a.Paths)
-	if err := ld.Grant(ctx, p.Name, a.devBinary(), p.BrowserPort); err != nil {
+	if err := ld.Grant(ctx, p.Name, p.TailscaleHost, a.devBinary(), p.BrowserPort); err != nil {
 		return err
 	}
 	res, err := a.containerExec(ctx, p, browser.RegisterScript(p.BrowserPort)...)

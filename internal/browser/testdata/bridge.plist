@@ -11,6 +11,8 @@
 		<string>bridge</string>
 		<string>--port</string>
 		<string>9301</string>
+		<string>--host</string>
+		<string>mbp-shop</string>
 		<string>--</string>
 		<string>npx</string>
 		<string>-y</string>

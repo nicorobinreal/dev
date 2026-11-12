@@ -47,9 +47,14 @@ func jobEnv() map[string]string {
 	return map[string]string{"PATH": JobPATH, "DEV_NO_UPDATE": "1"}
 }
 
-// BridgeJob runs `dev browser bridge --port N -- npx -y chrome-devtools-mcp@latest --autoConnect`.
-func BridgeJob(p state.Paths, name, devBinary string, port int) Job {
-	args := []string{devBinary, "browser", "bridge", "--port", strconv.Itoa(port), "--"}
+// BridgeJob runs `dev browser bridge --port N --host H -- npx -y chrome-devtools-mcp@latest --autoConnect`.
+// host is the project's Tailscale name, used in the MCP instructions.
+func BridgeJob(p state.Paths, name, host, devBinary string, port int) Job {
+	args := []string{devBinary, "browser", "bridge", "--port", strconv.Itoa(port)}
+	if host != "" {
+		args = append(args, "--host", host)
+	}
+	args = append(args, "--")
 	return Job{
 		Label:            BridgeLabel(name),
 		ProgramArguments: append(args, ChildCommand...),
@@ -277,8 +282,8 @@ func parsePrint(out string) JobStatus {
 }
 
 // Grant writes and loads both jobs for a project.
-func (l *Launchd) Grant(ctx context.Context, name, devBinary string, port int) error {
-	if err := l.Load(ctx, BridgeJob(l.Paths, name, devBinary, port)); err != nil {
+func (l *Launchd) Grant(ctx context.Context, name, host, devBinary string, port int) error {
+	if err := l.Load(ctx, BridgeJob(l.Paths, name, host, devBinary, port)); err != nil {
 		return err
 	}
 	return l.Load(ctx, TunnelJob(l.Paths, name, port))

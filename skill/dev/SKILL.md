@@ -93,6 +93,11 @@ Notes:
   `http://` from `dev url` is fine for normal dev servers.
 - After `dev browser grant`, Chrome asks the user to approve each new debugging
   session; tell them to watch for it.
+- The browser is the user's Chrome on the Mac, so it resolves URLs on the Mac:
+  `localhost` there is the Mac, not the VM or container. To have an agent open
+  a project's service in the browser, use the Tailscale URL from
+  `dev url <name> <port>` (e.g. `http://mbp-shop:8080`), never `localhost`.
+  The bridge also tells agents this through its MCP server instructions.
 
 ## Typical flows
 

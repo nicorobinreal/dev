@@ -2,6 +2,7 @@ package browser
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -34,7 +35,7 @@ type echoArgs struct {
 }
 
 func runFakeChild() {
-	s := mcp.NewServer(&mcp.Implementation{Name: "fake-chrome", Version: "0.0.1"}, nil)
+	s := mcp.NewServer(&mcp.Implementation{Name: "fake-chrome", Version: "0.0.1"}, &mcp.ServerOptions{Instructions: childInstructions})
 	mcp.AddTool(s, &mcp.Tool{Name: "echo", Description: "echo text with pid"},
 		func(ctx context.Context, req *mcp.CallToolRequest, a echoArgs) (*mcp.CallToolResult, any, error) {
 			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("%s pid=%d", a.Text, os.Getpid())}}}, nil, nil
@@ -89,7 +90,7 @@ func startBridge(t *testing.T) (string, chan error, context.CancelFunc) {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
-	go func() { done <- serveBridge(ctx, ln, child, log.New(os.Stderr, "bridge: ", 0)) }()
+	go func() { done <- serveBridge(ctx, ln, child, log.New(os.Stderr, "bridge: ", 0), testInstructions) }()
 	t.Cleanup(func() {
 		cancel()
 		select {
@@ -124,6 +125,65 @@ func text(t *testing.T, res *mcp.CallToolResult) string {
 		t.Fatalf("content: %+v", res.Content)
 	}
 	return res.Content[0].(*mcp.TextContent).Text
+}
+
+const (
+	testInstructions  = "This browser runs on the host."
+	childInstructions = "Use take_snapshot before clicking."
+)
+
+// TestBridgeInstructions: every client, including later ones answered from
+// the cached initialize result, gets the bridge's instructions ahead of the
+// child's own.
+func TestBridgeInstructions(t *testing.T) {
+	url, _, _ := startBridge(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	want := testInstructions + "\n\n" + childInstructions
+	for i, root := range []string{"file:///a", "file:///b"} {
+		c := connect(t, ctx, url, nil, root)
+		if got := c.InitializeResult().Instructions; got != want {
+			t.Errorf("client %d instructions = %q, want %q", i, got, want)
+		}
+	}
+}
+
+func TestWithInstructions(t *testing.T) {
+	cases := []struct{ in, extra, want string }{
+		{`{"protocolVersion":"x"}`, "ours", "ours"},
+		{`{"instructions":"theirs"}`, "ours", "ours\n\ntheirs"},
+		{`{"instructions":"  "}`, "ours", "ours"},
+	}
+	for _, c := range cases {
+		var m map[string]any
+		if err := json.Unmarshal(withInstructions(json.RawMessage(c.in), c.extra), &m); err != nil {
+			t.Fatal(err)
+		}
+		if m["instructions"] != c.want {
+			t.Errorf("%s: instructions = %q, want %q", c.in, m["instructions"], c.want)
+		}
+		if strings.Contains(c.in, "protocolVersion") && m["protocolVersion"] != "x" {
+			t.Errorf("other fields lost: %v", m)
+		}
+	}
+	if got := string(withInstructions(json.RawMessage(`not json`), "ours")); got != "not json" {
+		t.Errorf("unparseable result changed: %q", got)
+	}
+	if got := string(withInstructions(json.RawMessage(`{"a":1}`), "")); got != `{"a":1}` {
+		t.Errorf("empty extra changed result: %q", got)
+	}
+}
+
+func TestInstructionsText(t *testing.T) {
+	s := Instructions("black-phone")
+	for _, want := range []string{"Mac", "localhost", "http://black-phone:8080", "curl"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("instructions lack %q: %s", want, s)
+		}
+	}
+	if strings.Contains(Instructions(""), "http://") {
+		t.Error("no host: should not suggest a URL")
+	}
 }
 
 func TestBridgeEndToEnd(t *testing.T) {

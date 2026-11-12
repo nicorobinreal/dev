@@ -48,7 +48,7 @@ func lint(t *testing.T, plist []byte) {
 var testPaths = state.Paths{Home: "/Users/alice"}
 
 func TestBridgePlistGolden(t *testing.T) {
-	j := BridgeJob(testPaths, "shop", "/Users/alice/.local/bin/dev", 9301)
+	j := BridgeJob(testPaths, "shop", "mbp-shop", "/Users/alice/.local/bin/dev", 9301)
 	golden(t, "bridge.plist", j.Plist())
 	lint(t, j.Plist())
 }
@@ -77,7 +77,7 @@ func newTestLaunchd(t *testing.T, f *run.Fake) (*Launchd, state.Paths) {
 func TestGrantLoadsBothJobs(t *testing.T) {
 	f := (&run.Fake{}).Fail("launchctl bootout", 3, "Boot-out failed: 3: No such process")
 	l, p := newTestLaunchd(t, f)
-	if err := l.Grant(context.Background(), "shop", "/bin/dev", 9300); err != nil {
+	if err := l.Grant(context.Background(), "shop", "mbp-shop", "/bin/dev", 9300); err != nil {
 		t.Fatal(err)
 	}
 	bp := PlistPath(p, "dev.browser.shop.bridge")

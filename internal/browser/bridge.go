@@ -45,7 +45,7 @@ const sessionIDHeader = "Mcp-Session-Id"
 //
 // Bridge returns nil when ctx is cancelled, and ErrChildExited (wrapped) when
 // the child dies, so the caller can exit non-zero and let launchd restart it.
-func Bridge(ctx context.Context, listenAddr string, command []string) error {
+func Bridge(ctx context.Context, listenAddr string, command []string, instructions string) error {
 	if len(command) == 0 {
 		return errors.New("bridge: no command given")
 	}
@@ -62,14 +62,15 @@ func Bridge(ctx context.Context, listenAddr string, command []string) error {
 	}
 	logger := log.New(os.Stderr, "bridge: ", log.LstdFlags)
 	logger.Printf("listening on http://%s/mcp, child %q (pid %d)", ln.Addr(), strings.Join(command, " "), cmd.Process.Pid)
-	return serveBridge(ctx, ln, child, logger)
+	return serveBridge(ctx, ln, child, logger, instructions)
 }
 
 // serveBridge runs the proxy on ln with an already connected child.
-func serveBridge(ctx context.Context, ln net.Listener, child mcp.Connection, logger *log.Logger) error {
+func serveBridge(ctx context.Context, ln net.Listener, child mcp.Connection, logger *log.Logger, instructions string) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	b := newProxy(child, logger)
+	b.instructions = instructions
 
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", b)
@@ -113,6 +114,10 @@ type proxy struct {
 	// original ID, for server-to-client requests.
 	fromChild  map[string]childReq
 	lastActive *session
+
+	// instructions are added to the child's initialize result (MCP server
+	// instructions, which clients put in the model's context).
+	instructions string
 
 	// Initialization of the child.
 	initState   int // 0 not started, 1 in flight, 2 done
@@ -520,6 +525,7 @@ func (b *proxy) childResponse(m *jsonrpc.Response) {
 		waiters := b.initWaiters
 		b.initWaiters = nil
 		if m.Error == nil {
+			m.Result = withInstructions(m.Result, b.instructions)
 			b.initState = 2
 			b.initResult = m.Result
 			for _, w := range waiters {
@@ -663,4 +669,50 @@ func notification(method string, params any) (*jsonrpc.Request, error) {
 		return nil, err
 	}
 	return &jsonrpc.Request{Method: method, Params: raw}, nil
+}
+
+// withInstructions puts extra in the initialize result's "instructions",
+// ahead of any instructions the child sent. On a result it can't parse it
+// returns the result unchanged.
+func withInstructions(result json.RawMessage, extra string) json.RawMessage {
+	if extra == "" {
+		return result
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(result, &m); err != nil || m == nil {
+		return result
+	}
+	text := extra
+	var theirs string
+	if raw, ok := m["instructions"]; ok && json.Unmarshal(raw, &theirs) == nil && strings.TrimSpace(theirs) != "" {
+		text = extra + "\n\n" + theirs
+	}
+	b, err := json.Marshal(text)
+	if err != nil {
+		return result
+	}
+	m["instructions"] = b
+	out, err := json.Marshal(m)
+	if err != nil {
+		return result
+	}
+	return out
+}
+
+// Instructions tells agents in the container that the browser runs on the
+// user's Mac, so localhost there is the Mac, and how to reach this project's
+// services instead (its Tailscale name).
+func Instructions(host string) string {
+	s := "This browser is the user's real Chrome running on their Mac (the host machine), " +
+		"not inside this container or VM. The browser resolves every URL on the Mac: " +
+		"localhost and 127.0.0.1 in the browser mean the Mac, not this environment, " +
+		"so dev servers and docker compose services running here are NOT reachable at localhost in the browser."
+	if host != "" {
+		s += " To open a service listening on port N here, use http://" + host + ":N " +
+			"(this environment's Tailscale name), e.g. http://" + host + ":8080."
+	}
+	s += " Your own shell tools here (curl, test runners) still reach those services at localhost:N. " +
+		"This is the user's own browser profile with their logins: don't change settings, " +
+		"submit forms or make purchases unless asked."
+	return s
 }
