@@ -18,6 +18,10 @@
 		<string>ExitOnForwardFailure=yes</string>
 		<string>-o</string>
 		<string>BatchMode=yes</string>
+		<string>-o</string>
+		<string>ControlMaster=no</string>
+		<string>-o</string>
+		<string>ControlPath=none</string>
 		<string>-F</string>
 		<string>/Users/alice/.ssh/config</string>
 		<string>lima-shop</string>

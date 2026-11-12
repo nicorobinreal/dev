@@ -44,6 +44,9 @@ func requireRunning(p state.Project, inst lima.Instance) error {
 
 // touch updates last-used time.
 func (a *App) touch(p *state.Project) {
+	if a.DryRun {
+		return
+	}
 	p.LastUsedAt = time.Now().UTC()
 	_ = state.SaveProject(a.Paths, *p)
 }

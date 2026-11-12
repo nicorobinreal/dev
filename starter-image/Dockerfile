@@ -66,6 +66,9 @@ RUN chmod 755 /usr/local/bin/dev-sshd-keys \
       "PROMPT_COMMAND='history -a'" \
       >> /root/.bashrc \
  && echo 'CLAUDE_CONFIG_DIR=/root/.claude-auth' >> /etc/environment \
- && echo 'export PATH="/root/go/bin:$PATH"' > /etc/profile.d/dev-go.sh
+ && echo 'export PATH="/root/go/bin:$PATH"' > /etc/profile.d/dev-go.sh \
+ # The workspace is bind-mounted from the VM user's clone, so it's owned by a
+ # different uid than root; without this git refuses it ("dubious ownership").
+ && git config --system --add safe.directory '*'
 
 WORKDIR /root

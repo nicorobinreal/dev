@@ -71,6 +71,11 @@ func TunnelJob(p state.Paths, name string, port int) Job {
 			"-o", "ServerAliveCountMax=2",
 			"-o", "ExitOnForwardFailure=yes",
 			"-o", "BatchMode=yes",
+			// Lima's ssh config enables ControlMaster; without these, ssh hands
+			// the forward to an existing master and exits 0 immediately, so
+			// launchd keeps respawning it and the forward dies with the master.
+			"-o", "ControlMaster=no",
+			"-o", "ControlPath=none",
 			"-F", p.UserSSHConfig(),
 			"lima-" + name,
 		},

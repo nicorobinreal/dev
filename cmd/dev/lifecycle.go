@@ -487,14 +487,16 @@ func (a *App) removeProject(ctx context.Context, p state.Project, force bool) er
 	if err != nil {
 		return err
 	}
-	if exists && !force {
+	if exists && !force && a.DryRun && !inst.Running() {
+		a.Notef("[dry-run] would start %s to check for unpushed work\n", p.Name)
+	} else if exists && !force {
 		if !inst.Running() {
 			a.Notef("starting %s to check for unpushed work…\n", p.Name)
 			if err := a.lima().Start(ctx, p.LimaInstance); err != nil {
 				return fmt.Errorf("start VM to check for unpushed work (use --force to skip): %w", err)
 			}
 		}
-		if err := a.workCheck(ctx, p); err != nil {
+		if err := a.reader().workCheck(ctx, p); err != nil {
 			return err
 		}
 	}

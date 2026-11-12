@@ -52,9 +52,11 @@ func exitCode(err error) int {
 // App is shared by every command. Commands get it from the closure in
 // newRootCmd; tests build one with a fake Runner and temp Paths.
 type App struct {
-	Paths   state.Paths
-	Config  state.Config
-	Runner  run.Runner
+	Paths  state.Paths
+	Config state.Config
+	Runner run.Runner
+	// real is the unwrapped runner under --dry-run, for read-only VM scripts.
+	real    run.Runner
 	Log     *state.Logger
 	Out     io.Writer // stdout
 	Err     io.Writer // stderr
@@ -62,6 +64,17 @@ type App struct {
 	DryRun  bool
 	Verbose bool
 	Version string
+}
+
+// reader returns a view of the app whose runner really executes, even under
+// --dry-run; use only for read-only queries (work check, .devcontainer read).
+func (a *App) reader() *App {
+	if a.real == nil {
+		return a
+	}
+	c := *a
+	c.Runner = a.real
+	return &c
 }
 
 // Printf writes human output; suppressed in --json mode.

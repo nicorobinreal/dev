@@ -59,6 +59,7 @@ func (a *App) setup(cmd *cobra.Command, args []string) error {
 		a.Runner = &run.Exec{Log: a.Log}
 	}
 	if a.DryRun {
+		a.real = a.Runner
 		a.Runner = &dryRunner{app: a, real: a.Runner}
 	}
 	if hook := preRunHook; hook != nil {
