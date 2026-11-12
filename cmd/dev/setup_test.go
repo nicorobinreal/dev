@@ -9,8 +9,8 @@ import (
 	"github.com/nicorobinreal/dev/internal/state"
 )
 
-// initResult is the --json shape of `dev init`.
-type initResult struct {
+// setupResult is the --json shape of `dev setup`.
+type setupResult struct {
 	Config     state.Config `json:"config"`
 	ConfigFile string       `json:"config_file"`
 	Skill      struct {
@@ -22,16 +22,16 @@ type initResult struct {
 	} `json:"doctor"`
 }
 
-// Agents run init without a terminal: flags + defaults, no prompts, one JSON
+// Agents run setup without a terminal: flags + defaults, no prompts, one JSON
 // document on stdout (even when doctor checks fail).
-func TestInitNonInteractiveJSON(t *testing.T) {
+func TestSetupNonInteractiveJSON(t *testing.T) {
 	h := newHarness(t)
 	h.tailnet() // keep doctor's token check off the real API
-	code := h.run("init", "--json", "--machine", "mbp", "--harnesses", "claude,codex", "--cpus", "6", "--memory", "12GiB")
+	code := h.run("setup", "--json", "--machine", "mbp", "--harnesses", "claude,codex", "--cpus", "6", "--memory", "12GiB")
 	if code != ExitOK && code != ExitError {
 		t.Fatalf("exit %d\n%s", code, h.err.String())
 	}
-	var res initResult
+	var res setupResult
 	h.decodeJSON(&res) // fails if stdout isn't exactly one JSON document
 	if res.Config.Machine != "mbp" || res.Config.CPUs != 6 || res.Config.Memory != "12GiB" || res.Config.Disk != "60GiB" {
 		t.Errorf("config = %+v", res.Config)
@@ -61,8 +61,8 @@ func TestInitNonInteractiveJSON(t *testing.T) {
 	}
 }
 
-// Without flags, init keeps existing config values.
-func TestInitKeepsExistingConfig(t *testing.T) {
+// Without flags, setup keeps existing config values.
+func TestSetupKeepsExistingConfig(t *testing.T) {
 	h := newHarness(t)
 	h.tailnet()
 	c := state.DefaultConfig()
@@ -70,8 +70,8 @@ func TestInitKeepsExistingConfig(t *testing.T) {
 	if err := state.SaveConfig(h.paths(), c); err != nil {
 		t.Fatal(err)
 	}
-	h.run("init", "--json", "--disk", "100GiB")
-	var res initResult
+	h.run("setup", "--json", "--disk", "100GiB")
+	var res setupResult
 	h.decodeJSON(&res)
 	// DEV_MACHINE (set by the harness) overrides the file, as everywhere.
 	if res.Config.CPUs != 8 || res.Config.Editor != "zed" || res.Config.Disk != "100GiB" {
@@ -79,7 +79,7 @@ func TestInitKeepsExistingConfig(t *testing.T) {
 	}
 }
 
-func TestInitRejectsBadValues(t *testing.T) {
+func TestSetupRejectsBadValues(t *testing.T) {
 	for _, args := range [][]string{
 		{"--machine", "Bad_Name"},
 		{"--harnesses", "claude,vim"},
@@ -88,7 +88,7 @@ func TestInitRejectsBadValues(t *testing.T) {
 		{"--editor", "emacs"},
 	} {
 		h := newHarness(t)
-		h.mustRun(ExitError, append([]string{"init", "--json"}, args...)...)
+		h.mustRun(ExitError, append([]string{"setup", "--json"}, args...)...)
 		if _, err := os.Stat(h.paths().ConfigFile()); err == nil {
 			t.Errorf("%v: config saved despite invalid value", args)
 		}
@@ -108,5 +108,18 @@ func TestDoctorJSONSingleDocument(t *testing.T) {
 	h.decodeJSON(&res)
 	if res.OK {
 		t.Error("ok = true with lima missing")
+	}
+}
+
+// `init` still works: it was the command's name before v0.1.4 and older
+// install scripts call it.
+func TestInitAlias(t *testing.T) {
+	h := newHarness(t)
+	h.tailnet()
+	h.run("init", "--json", "--cpus", "3")
+	var res setupResult
+	h.decodeJSON(&res)
+	if res.Config.CPUs != 3 {
+		t.Errorf("config = %+v", res.Config)
 	}
 }

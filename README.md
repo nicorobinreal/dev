@@ -37,19 +37,19 @@ Homebrew can.
 curl -fsSL https://raw.githubusercontent.com/nicorobinreal/dev/main/install.sh | sh
 ```
 
-This puts `dev` in `~/.local/bin`, then runs `dev init`, which:
+This puts `dev` in `~/.local/bin`, then runs `dev setup`, which:
 - asks for your machine prefix, which agents get the `dev` skill, and the
   default VM size
 - installs the skill
 - runs `dev doctor`
 
-`dev init` only asks questions in a terminal. Agents and scripts get no
+`dev setup` only asks questions in a terminal. Agents and scripts get no
 prompts: they pass settings as flags, and anything not given keeps its current
 or default value.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/nicorobinreal/dev/main/install.sh | DEV_INIT_ARGS="--json" sh
-dev init --json --machine mbp --harnesses claude,codex --cpus 6
+curl -fsSL https://raw.githubusercontent.com/nicorobinreal/dev/main/install.sh | DEV_SETUP_ARGS="--json" sh
+dev setup --json --machine mbp --harnesses claude,codex --cpus 6
 ```
 
 `dev` updates itself in the background, checking at most once an hour.
@@ -101,14 +101,15 @@ commit. A repo with its own devcontainer is used as-is, but it may lack things
 | `dev upgrade <name>` | Apply provisioning steps added since the VM was created. Flag: `--all` |
 | `dev prune` | Remove long-unused stopped VMs and orphaned tailnet nodes. Flags: `--older-than 14d`, `--docker`, `--force` |
 | `dev doctor` | Check prerequisites and guide the Tailscale setup. Flag: `--fix` |
-| `dev init` | Re-run first-time setup |
+| `dev setup` | Change settings (machine prefix, agents, default VM size), reinstall the skill, run doctor. Safe to re-run |
 | `dev self-update` | Update now |
 | `dev self-uninstall` | Remove `dev`, the skill and the SSH config; keeps VMs. Flag: `--purge` (also deletes VMs and their tailnet nodes) |
 
 Global flags: `--json` (machine-readable output), `--dry-run`, `--verbose`.
 
-Commands never prompt, so agents can call them. `dev init` and the Tailscale
-setup in `dev doctor` are the exceptions. Exit codes:
+Commands never prompt, so agents can call them. The exceptions are
+`dev setup` run in a terminal without `--json`, and the Tailscale setup in
+`dev doctor`. Exit codes:
 
 | Code | Meaning |
 | --- | --- |

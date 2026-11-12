@@ -36,15 +36,16 @@ with a letter), used by all commands.
 If `dev` isn't installed (`command -v dev` fails), install it with:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/nicorobinreal/dev/main/install.sh | DEV_INIT_ARGS="--json" sh
+curl -fsSL https://raw.githubusercontent.com/nicorobinreal/dev/main/install.sh | DEV_SETUP_ARGS="--json" sh
 ```
 
-The installer runs `dev init`. With `--json`, init never prompts: it takes
+The installer runs `dev setup`. With `--json`, setup never prompts: it takes
 values from flags, then the existing config, then defaults (machine prefix =
-short hostname). Add flags to `DEV_INIT_ARGS` only for values the user asked
-for. To change settings later, run `dev init --json` with the flags to change.
+short hostname). Add flags to `DEV_SETUP_ARGS` only for values the user asked
+for. To change settings later, run `dev setup --json` with the flags to change;
+it's safe to run any number of times.
 
-The init JSON includes `doctor.checks`. For a failed check:
+The setup JSON includes `doctor.checks`. For a failed check:
 - **Fixable by Homebrew** (lima, gh, node): `dev doctor --fix --json`.
 - **`gh` not logged in**: ask the user to run `gh auth login`.
 - **`tailscale-oauth`**: the user must create a Tailscale OAuth client and
@@ -94,7 +95,7 @@ Global flags for every command: `--json`, `--dry-run`, `--verbose`.
 | `dev browser status <name>` | Report whether the bridge and tunnel are running | |
 | `dev ssh-config` | Regenerate the `lima-<name>` (VM) and `<name>-dev` (container) SSH host entries | |
 | `dev upgrade <name>` | Run provisioning steps the VM hasn't run yet | `--all` (every project) |
-| `dev init` | First-time setup: config, skill install, doctor | `--machine <prefix>`, `--harnesses claude,codex,opencode`, `--cpus <n>`, `--memory <size>`, `--disk <size>`, `--editor code\|cursor\|zed` |
+| `dev setup` | Change settings (machine prefix, harnesses, default VM size), reinstall the skill, run doctor. Safe to re-run | `--machine <prefix>`, `--harnesses claude,codex,opencode`, `--cpus <n>`, `--memory <size>`, `--disk <size>`, `--editor code\|cursor\|zed` |
 | `dev doctor` | Check host prerequisites | `--fix` (install what Homebrew can) |
 | `dev prune` | Remove stopped VMs and orphaned tailnet nodes older than a threshold; skips VMs with uncommitted or unpushed work | `--older-than 14d`, `--force` |
 | `dev self-update` | Update dev now (normally automatic) | |

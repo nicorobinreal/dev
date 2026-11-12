@@ -26,7 +26,7 @@ func init() {
 	register(newLsCmd)
 	register(newUpgradeCmd)
 	register(newPruneCmd)
-	register(newInitCmd)
+	register(newSetupCmd)
 	register(newSelfUninstallCmd)
 	postUpdateHook = syncSkill
 }
@@ -333,21 +333,23 @@ func parseAge(s string) (time.Duration, error) {
 	return d, nil
 }
 
-func newInitCmd(a *App) *cobra.Command {
+func newSetupCmd(a *App) *cobra.Command {
 	var machine, harnesses, memory, disk, editor string
 	var cpus int
 	cmd := &cobra.Command{
-		Use:   "init",
-		Short: "First-run setup: machine prefix, harnesses, default VM resources; installs the skill and runs doctor",
-		Long: `First-run setup: machine prefix, which harnesses get the dev skill, and
-default VM resources. Saves the config, installs the skill and runs doctor.
+		Use:     "setup",
+		Aliases: []string{"init"}, // the name before v0.1.4
+		Short:   "Set the machine prefix, harnesses and default VM size; install the skill and run doctor",
+		Long: `Set the machine prefix, which harnesses get the dev skill, and the default
+VM size. Saves the config, installs the skill and runs doctor. The installer
+runs it once; run it again any time to change settings.
 
 In a terminal (without --json) it asks for each value, offering the flag or
 current value as the default. Otherwise it never prompts: it uses the flags,
 then the current config, then built-in defaults. Agents should pass --json and
 any flags they need.`,
-		Example: `  dev init --json
-  dev init --json --machine mbp --harnesses claude,codex --cpus 6 --memory 12GiB`,
+		Example: `  dev setup --json
+  dev setup --json --machine mbp --harnesses claude,codex --cpus 6 --memory 12GiB`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := a.Config
@@ -372,11 +374,11 @@ any flags they need.`,
 			}
 			interactive := isTTY() && !a.JSON
 			if interactive {
-				if err := askInit(a, &c); err != nil {
+				if err := askSetup(a, &c); err != nil {
 					return err
 				}
 			}
-			if err := validateInit(c); err != nil {
+			if err := validateSetup(c); err != nil {
 				return err
 			}
 			c.Initialized = true
@@ -423,8 +425,8 @@ any flags they need.`,
 	return cmd
 }
 
-// askInit prompts for each init value, offering the current one as default.
-func askInit(a *App, c *state.Config) error {
+// askSetup prompts for each setup value, offering the current one as default.
+func askSetup(a *App, c *state.Config) error {
 	in := bufio.NewReader(os.Stdin)
 	ask := func(q, def string) string {
 		fmt.Fprintf(a.Out, "%s [%s]: ", q, def)
@@ -452,7 +454,7 @@ func askInit(a *App, c *state.Config) error {
 	return nil
 }
 
-func validateInit(c state.Config) error {
+func validateSetup(c state.Config) error {
 	if err := state.ValidateMachine(c.Machine); err != nil {
 		return err
 	}

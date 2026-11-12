@@ -179,7 +179,7 @@ func TestInstallNewClaudeFolderNeedsReload(t *testing.T) {
 	if _, err := Install(p, []string{state.HarnessCodex}); err != nil {
 		t.Fatal(err)
 	}
-	// Claude selected later (dev init): its folder is new, hash unchanged.
+	// Claude selected later (dev setup): its folder is new, hash unchanged.
 	res, err := Install(p, []string{state.HarnessCodex, state.HarnessClaude})
 	if err != nil {
 		t.Fatal(err)

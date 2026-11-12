@@ -6,12 +6,13 @@
 # Environment:
 #   DEV_VERSION=v1.2.3   install that release instead of the latest
 #   DEV_INSTALL_DIR=...  install directory (default ~/.local/bin)
-#   DEV_SKIP_INIT=1      don't run `dev init` afterwards
-#   DEV_INIT_ARGS="..."  flags for `dev init`, e.g. "--json --machine mbp"
+#   DEV_SKIP_SETUP=1      don't run `dev setup` afterwards
+#   DEV_SETUP_ARGS="..."  flags for `dev setup`, e.g. "--json --machine mbp"
+#   (DEV_SKIP_INIT and DEV_INIT_ARGS, the older names, still work.)
 #
-# Agents: with no terminal, `dev init` doesn't prompt; it uses DEV_INIT_ARGS
+# Agents: with no terminal, `dev setup` doesn't prompt; it uses DEV_SETUP_ARGS
 # and defaults, e.g.
-#   curl -fsSL .../install.sh | DEV_INIT_ARGS="--json" sh
+#   curl -fsSL .../install.sh | DEV_SETUP_ARGS="--json" sh
 set -eu
 
 REPO="nicorobinreal/dev"
@@ -80,19 +81,27 @@ case ":$PATH:" in
     ;;
 esac
 
-if [ "${DEV_SKIP_INIT:-}" = "1" ]; then
+SKIP_SETUP="${DEV_SKIP_SETUP:-${DEV_SKIP_INIT:-}}"
+SETUP_ARGS="${DEV_SETUP_ARGS:-${DEV_INIT_ARGS:-}}"
+if [ "$SKIP_SETUP" = "1" ]; then
   exit 0
 fi
 
-# In a terminal, `dev init` asks for each setting. Under `curl | sh`, stdin is
+# Releases before v0.1.4 call it `init`.
+SETUP=setup
+if ! "$INSTALL_DIR/dev" setup --help >/dev/null 2>&1; then
+  SETUP=init
+fi
+
+# In a terminal, `dev setup` asks for each setting. Under `curl | sh`, stdin is
 # this script, so read answers from the terminal when there is one. Without a
-# terminal (an agent), `dev init` doesn't prompt and uses DEV_INIT_ARGS plus
-# defaults. DEV_INIT_ARGS is split on spaces on purpose.
+# terminal (an agent), `dev setup` doesn't prompt and uses SETUP_ARGS plus
+# defaults. SETUP_ARGS is split on spaces on purpose.
 # shellcheck disable=SC2086
 if [ -t 0 ]; then
-  "$INSTALL_DIR/dev" init ${DEV_INIT_ARGS:-}
+  "$INSTALL_DIR/dev" "$SETUP" $SETUP_ARGS
 elif (exec </dev/tty) 2>/dev/null; then
-  "$INSTALL_DIR/dev" init ${DEV_INIT_ARGS:-} </dev/tty
+  "$INSTALL_DIR/dev" "$SETUP" $SETUP_ARGS </dev/tty
 else
-  "$INSTALL_DIR/dev" init ${DEV_INIT_ARGS:-} </dev/null
+  "$INSTALL_DIR/dev" "$SETUP" $SETUP_ARGS </dev/null
 fi
