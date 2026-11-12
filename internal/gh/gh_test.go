@@ -68,16 +68,23 @@ func TestSyncVMTokenOnStdinOnly(t *testing.T) {
 	}
 }
 
-// TestSyncScriptRuns executes the script locally with a fake HOME and no gh
-// on PATH, checking the file write path and permissions.
+// TestSyncScriptRuns executes the script locally with a fake HOME and a stub
+// gh first on PATH (CI runners have a real gh in /usr/bin), checking the file
+// write path, permissions and the gh calls.
 func TestSyncScriptRuns(t *testing.T) {
 	bash, err := exec.LookPath("bash")
 	if err != nil {
 		t.Skip("no bash")
 	}
 	home := t.TempDir()
+	stubDir := t.TempDir()
+	ghLog := filepath.Join(stubDir, "gh.log")
+	stub := "#!/bin/sh\necho \"$*\" >> " + ghLog + "\ncat >/dev/null\n"
+	if err := os.WriteFile(filepath.Join(stubDir, "gh"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	cmd := exec.Command(bash, "-c", SyncScript)
-	cmd.Env = []string{"HOME=" + home, "PATH=/usr/bin:/bin"}
+	cmd.Env = []string{"HOME=" + home, "PATH=" + stubDir + ":/usr/bin:/bin"}
 	cmd.Stdin = strings.NewReader("tok1\n")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if strings.Contains(string(out), "base64") || strings.Contains(string(out), "mktemp") {
@@ -97,6 +104,10 @@ func TestSyncScriptRuns(t *testing.T) {
 	ents, _ := os.ReadDir(filepath.Join(home, VMTokenDir))
 	if len(ents) != 1 {
 		t.Fatalf("temp file left behind: %v", ents)
+	}
+	calls, _ := os.ReadFile(ghLog)
+	if !strings.Contains(string(calls), "auth login") || !strings.Contains(string(calls), "auth setup-git") {
+		t.Fatalf("gh calls = %q", calls)
 	}
 }
 

@@ -27,9 +27,12 @@ jobs:
           GOOS: darwin # dev is a macOS tool; lint the darwin build
 
   test:
-    # macOS runners: tests may assume darwin paths/syscalls. No VMs here
-    # (GitHub's macOS runners can't nest virtualization); e2e is local-only.
-    runs-on: macos-latest
+    # macOS is the target; Ubuntu too because the release job tests there.
+    # No VMs here (GitHub's runners can't nest virtualization); e2e is local-only.
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
