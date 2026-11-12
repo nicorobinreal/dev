@@ -69,12 +69,7 @@ func newDoctorCmd(a *App) *cobra.Command {
 				}
 				checks = a.doctorChecks(ctx)
 			}
-			failed := 0
-			for _, c := range checks {
-				if !c.OK && !c.Warn {
-					failed++
-				}
-			}
+			failed := failedChecks(checks)
 			err := a.Emit(map[string]any{"checks": checks, "ok": failed == 0}, func() {
 				for _, c := range checks {
 					mark := "✓"
@@ -95,6 +90,9 @@ func newDoctorCmd(a *App) *cobra.Command {
 				return err
 			}
 			if failed > 0 {
+				if a.JSON {
+					return &exitStatusError{code: ExitError} // details are in the JSON
+				}
 				return fmt.Errorf("%d check(s) failed", failed)
 			}
 			return nil
@@ -104,6 +102,16 @@ func newDoctorCmd(a *App) *cobra.Command {
 	cmd.Flags().BoolVar(&setupTS, "setup-tailscale", false, "run the guided Tailscale setup even without a TTY check")
 	_ = cmd.Flags().MarkHidden("setup-tailscale")
 	return cmd
+}
+
+func failedChecks(checks []Check) int {
+	n := 0
+	for _, c := range checks {
+		if !c.OK && !c.Warn {
+			n++
+		}
+	}
+	return n
 }
 
 func isTTY() bool {

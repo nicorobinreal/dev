@@ -334,45 +334,49 @@ func parseAge(s string) (time.Duration, error) {
 }
 
 func newInitCmd(a *App) *cobra.Command {
-	return &cobra.Command{
+	var machine, harnesses, memory, disk, editor string
+	var cpus int
+	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "First-run setup: machine prefix, harnesses, default VM resources; installs the skill and runs doctor",
-		Args:  cobra.NoArgs,
+		Long: `First-run setup: machine prefix, which harnesses get the dev skill, and
+default VM resources. Saves the config, installs the skill and runs doctor.
+
+In a terminal (without --json) it asks for each value, offering the flag or
+current value as the default. Otherwise it never prompts: it uses the flags,
+then the current config, then built-in defaults. Agents should pass --json and
+any flags they need.`,
+		Example: `  dev init --json
+  dev init --json --machine mbp --harnesses claude,codex --cpus 6 --memory 12GiB`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := a.Config
-			in := bufio.NewReader(os.Stdin)
-			ask := func(q, def string) string {
-				fmt.Fprintf(a.Out, "%s [%s]: ", q, def)
-				line, _ := in.ReadString('\n')
-				if line = strings.TrimSpace(line); line != "" {
-					return line
+			f := cmd.Flags()
+			if f.Changed("machine") {
+				c.Machine = machine
+			}
+			if f.Changed("harnesses") {
+				c.Harnesses = splitList(harnesses)
+			}
+			if f.Changed("cpus") {
+				c.CPUs = cpus
+			}
+			if f.Changed("memory") {
+				c.Memory = memory
+			}
+			if f.Changed("disk") {
+				c.Disk = disk
+			}
+			if f.Changed("editor") {
+				c.Editor = editor
+			}
+			interactive := isTTY() && !a.JSON
+			if interactive {
+				if err := askInit(a, &c); err != nil {
+					return err
 				}
-				return def
 			}
-			for {
-				c.Machine = ask("Machine prefix (Tailscale names are <machine>-<project>)", c.Machine)
-				if err := state.ValidateName(c.Machine, "x"); err == nil {
-					break
-				}
-				fmt.Fprintln(a.Out, "  use lowercase letters, digits and '-', starting with a letter")
-			}
-			hs := ask("Harnesses that get the dev skill (claude,codex,opencode)", strings.Join(c.Harnesses, ","))
-			c.Harnesses = nil
-			for _, h := range strings.Split(hs, ",") {
-				if h = strings.TrimSpace(h); h != "" {
-					if _, ok := skill.Lookup(h); !ok {
-						return fmt.Errorf("unknown harness %q", h)
-					}
-					c.Harnesses = append(c.Harnesses, h)
-				}
-			}
-			if n, err := strconv.Atoi(ask("Default VM CPUs", strconv.Itoa(c.CPUs))); err == nil && n > 0 {
-				c.CPUs = n
-			}
-			c.Memory = ask("Default VM memory", c.Memory)
-			c.Disk = ask("Default VM disk", c.Disk)
-			c.Editor = ask("Editor (code|cursor|zed)", c.Editor)
-			if err := validEditor(c.Editor); err != nil {
+			if err := validateInit(c); err != nil {
 				return err
 			}
 			c.Initialized = true
@@ -384,16 +388,96 @@ func newInitCmd(a *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(a.Out, "✓ config saved to %s\n✓ skill installed: %s\n", a.Paths.ConfigFile(), strings.Join(res.Dirs, ", "))
-			for _, n := range res.Notices() {
-				fmt.Fprintln(a.Out, n)
+			if !a.JSON {
+				fmt.Fprintf(a.Out, "✓ config saved to %s\n✓ skill installed: %s\n", a.Paths.ConfigFile(), strings.Join(res.Dirs, ", "))
+				for _, n := range res.Notices() {
+					fmt.Fprintln(a.Out, n)
+				}
+				fmt.Fprintln(a.Out, "\nRunning dev doctor…")
+				doc := newDoctorCmd(a)
+				doc.SetContext(cmd.Context())
+				return doc.RunE(doc, nil)
 			}
-			fmt.Fprintln(a.Out, "\nRunning dev doctor…")
-			doc := newDoctorCmd(a)
-			doc.SetContext(cmd.Context())
-			return doc.RunE(doc, nil)
+			checks := a.doctorChecks(cmd.Context())
+			failed := failedChecks(checks)
+			if err := a.Emit(map[string]any{
+				"config": c, "config_file": a.Paths.ConfigFile(),
+				"skill":  map[string]any{"dirs": res.Dirs, "reload": res.Notices()},
+				"doctor": map[string]any{"checks": checks, "ok": failed == 0},
+			}, nil); err != nil {
+				return err
+			}
+			if failed > 0 {
+				return &exitStatusError{code: ExitError} // details are in the JSON
+			}
+			return nil
 		},
 	}
+	f := cmd.Flags()
+	f.StringVar(&machine, "machine", "", "machine prefix; Tailscale names are <machine>-<project> (default: short hostname)")
+	f.StringVar(&harnesses, "harnesses", "", "comma-separated harnesses that get the skill: claude,codex,opencode")
+	f.IntVar(&cpus, "cpus", 0, "default VM CPUs")
+	f.StringVar(&memory, "memory", "", "default VM memory, e.g. 8GiB")
+	f.StringVar(&disk, "disk", "", "default VM disk, e.g. 60GiB")
+	f.StringVar(&editor, "editor", "", "editor: code|cursor|zed")
+	return cmd
+}
+
+// askInit prompts for each init value, offering the current one as default.
+func askInit(a *App, c *state.Config) error {
+	in := bufio.NewReader(os.Stdin)
+	ask := func(q, def string) string {
+		fmt.Fprintf(a.Out, "%s [%s]: ", q, def)
+		line, _ := in.ReadString('\n')
+		if line = strings.TrimSpace(line); line != "" {
+			return line
+		}
+		return def
+	}
+	for {
+		c.Machine = ask("Machine prefix (Tailscale names are <machine>-<project>)", c.Machine)
+		err := state.ValidateMachine(c.Machine)
+		if err == nil {
+			break
+		}
+		fmt.Fprintf(a.Out, "  %v\n", err)
+	}
+	c.Harnesses = splitList(ask("Harnesses that get the dev skill (claude,codex,opencode)", strings.Join(c.Harnesses, ",")))
+	if n, err := strconv.Atoi(ask("Default VM CPUs", strconv.Itoa(c.CPUs))); err == nil && n > 0 {
+		c.CPUs = n
+	}
+	c.Memory = ask("Default VM memory", c.Memory)
+	c.Disk = ask("Default VM disk", c.Disk)
+	c.Editor = ask("Editor (code|cursor|zed)", c.Editor)
+	return nil
+}
+
+func validateInit(c state.Config) error {
+	if err := state.ValidateMachine(c.Machine); err != nil {
+		return err
+	}
+	for _, h := range c.Harnesses {
+		if _, ok := skill.Lookup(h); !ok {
+			return fmt.Errorf("unknown harness %q (claude, codex, opencode)", h)
+		}
+	}
+	if c.CPUs < 1 {
+		return fmt.Errorf("invalid --cpus %d", c.CPUs)
+	}
+	if err := (lima.Spec{Name: "x", CPUs: c.CPUs, Memory: c.Memory, Disk: c.Disk}).Validate(); err != nil {
+		return err
+	}
+	return validEditor(c.Editor)
+}
+
+func splitList(s string) []string {
+	var out []string
+	for _, h := range strings.Split(s, ",") {
+		if h = strings.TrimSpace(h); h != "" {
+			out = append(out, h)
+		}
+	}
+	return out
 }
 
 func newSelfUninstallCmd(a *App) *cobra.Command {

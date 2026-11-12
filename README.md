@@ -43,6 +43,15 @@ This puts `dev` in `~/.local/bin`, then runs `dev init`, which:
 - installs the skill
 - runs `dev doctor`
 
+`dev init` only asks questions in a terminal. Agents and scripts get no
+prompts: they pass settings as flags, and anything not given keeps its current
+or default value.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/nicorobinreal/dev/main/install.sh | DEV_INIT_ARGS="--json" sh
+dev init --json --machine mbp --harnesses claude,codex --cpus 6
+```
+
 `dev` updates itself in the background, checking at most once an hour.
 
 ### One-time Tailscale setup

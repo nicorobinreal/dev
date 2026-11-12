@@ -30,6 +30,19 @@ func TestValidateName(t *testing.T) {
 	}
 }
 
+func TestValidateMachine(t *testing.T) {
+	for _, m := range []string{"black", "mbp-2", "e2e"} {
+		if err := ValidateMachine(m); err != nil {
+			t.Errorf("%q: %v", m, err)
+		}
+	}
+	for _, m := range []string{"", "Black", "2mbp", "mbp-", "a_b", strings.Repeat("a", 41)} {
+		if ValidateMachine(m) == nil {
+			t.Errorf("%q: expected error", m)
+		}
+	}
+}
+
 func TestConfigRoundTrip(t *testing.T) {
 	p := Paths{Home: t.TempDir()}
 	c, err := LoadConfig(p)

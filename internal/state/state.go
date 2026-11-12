@@ -58,15 +58,15 @@ const (
 
 // Config is ~/.config/dev/config.toml.
 type Config struct {
-	Machine      string   `toml:"machine"`
-	Harnesses    []string `toml:"harnesses"`
-	CPUs         int      `toml:"cpus"`
-	Memory       string   `toml:"memory"` // e.g. "8GiB"
-	Disk         string   `toml:"disk"`   // e.g. "60GiB"
-	TailscaleTag string   `toml:"tailscale_tag"`
-	Editor       string   `toml:"editor"` // code | cursor | zed
-	RAMWarnShare float64  `toml:"ram_warn_share"`
-	Initialized  bool     `toml:"initialized"`
+	Machine      string   `toml:"machine" json:"machine"`
+	Harnesses    []string `toml:"harnesses" json:"harnesses"`
+	CPUs         int      `toml:"cpus" json:"cpus"`
+	Memory       string   `toml:"memory" json:"memory"` // e.g. "8GiB"
+	Disk         string   `toml:"disk" json:"disk"`     // e.g. "60GiB"
+	TailscaleTag string   `toml:"tailscale_tag" json:"tailscale_tag"`
+	Editor       string   `toml:"editor" json:"editor"` // code | cursor | zed
+	RAMWarnShare float64  `toml:"ram_warn_share" json:"ram_warn_share"`
+	Initialized  bool     `toml:"initialized" json:"initialized"`
 }
 
 // DefaultConfig returns the built-in defaults.
@@ -237,6 +237,18 @@ func ValidateName(machine, name string) error {
 	}
 	if n := len(TailscaleHost(machine, name)); n > 63 {
 		return fmt.Errorf("invalid name %q: %s is %d characters (max 63)", name, TailscaleHost(machine, name), n)
+	}
+	return nil
+}
+
+// ValidateMachine checks a machine prefix: the same characters as a project
+// name, leaving room for -<name> in a 63-character DNS label.
+func ValidateMachine(machine string) error {
+	if !nameRE.MatchString(machine) || strings.HasSuffix(machine, "-") {
+		return fmt.Errorf("invalid machine prefix %q: use lowercase letters, digits and '-', starting with a letter", machine)
+	}
+	if len(machine) > 40 {
+		return fmt.Errorf("invalid machine prefix %q: at most 40 characters, to leave room for project names", machine)
 	}
 	return nil
 }

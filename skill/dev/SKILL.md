@@ -23,11 +23,33 @@ with a letter), used by all commands.
 - **Never add `--force` on your own.** It skips safety checks (for example it
   deletes a VM with uncommitted or unpushed work). Explain what was refused and
   ask the user first.
-- `dev init` and the guided Tailscale setup in `dev doctor` are for the user to
-  run in their own terminal. Tell them to run it; don't run it yourself.
+- **Installing and first-time setup** work without a terminal; see
+  [Setup](#setup). The one step only the user can do is storing the Tailscale
+  OAuth secret (`dev doctor` in their own terminal), because the secret must
+  never pass through you.
 - `--dry-run` shows what would happen without doing it; use it when unsure.
 - `--verbose` mirrors the log to stderr. Full logs are in
   `~/.local/state/dev/logs/<date>.log`.
+
+## Setup
+
+If `dev` isn't installed (`command -v dev` fails), install it with:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/nicorobinreal/dev/main/install.sh | DEV_INIT_ARGS="--json" sh
+```
+
+The installer runs `dev init`. With `--json`, init never prompts: it takes
+values from flags, then the existing config, then defaults (machine prefix =
+short hostname). Add flags to `DEV_INIT_ARGS` only for values the user asked
+for. To change settings later, run `dev init --json` with the flags to change.
+
+The init JSON includes `doctor.checks`. For a failed check:
+- **Fixable by Homebrew** (lima, gh, node): `dev doctor --fix --json`.
+- **`gh` not logged in**: ask the user to run `gh auth login`.
+- **`tailscale-oauth`**: the user must create a Tailscale OAuth client and
+  store it. Ask them to run `dev doctor` in their own terminal, which walks
+  them through it. Don't ask them for the secret.
 
 ## Exit codes
 
@@ -72,6 +94,7 @@ Global flags for every command: `--json`, `--dry-run`, `--verbose`.
 | `dev browser status <name>` | Report whether the bridge and tunnel are running | |
 | `dev ssh-config` | Regenerate the `lima-<name>` (VM) and `<name>-dev` (container) SSH host entries | |
 | `dev upgrade <name>` | Run provisioning steps the VM hasn't run yet | `--all` (every project) |
+| `dev init` | First-time setup: config, skill install, doctor | `--machine <prefix>`, `--harnesses claude,codex,opencode`, `--cpus <n>`, `--memory <size>`, `--disk <size>`, `--editor code\|cursor\|zed` |
 | `dev doctor` | Check host prerequisites | `--fix` (install what Homebrew can) |
 | `dev prune` | Remove stopped VMs and orphaned tailnet nodes older than a threshold; skips VMs with uncommitted or unpushed work | `--older-than 14d`, `--force` |
 | `dev self-update` | Update dev now (normally automatic) | |
