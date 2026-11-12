@@ -1,14 +1,18 @@
 name: release
 
+# Runs on every v* tag. Order matters: the binary embeds the starter image tag
+# (devcontainer.StarterImage), so the image must exist on ghcr before the
+# binary ships, or `dev new` would write a FROM line nobody can pull.
+#
+#   plan ─► starter-image (arm64, amd64) ─► starter-image-manifest ─► goreleaser
+#     │                                                                  ▲
+#     └──────────── (image up to date: build jobs skipped) ──────────────┘
+#
+# goreleaser always checks that the image tag exists before releasing.
+
 on:
   push:
     tags: ["v*"]
-  workflow_dispatch:
-    inputs:
-      starter_image_only:
-        description: "Only build and push the starter image (skip the GoReleaser release)"
-        type: boolean
-        default: true
 
 permissions:
   contents: write
@@ -18,32 +22,60 @@ env:
   STARTER_IMAGE: ghcr.io/nicorobinreal/dev-starter
 
 jobs:
-  goreleaser:
-    if: github.event_name == 'push' || !inputs.starter_image_only
+  # Decide whether the starter image needs building: its tag (from
+  # starter-image/VERSION) isn't on ghcr yet, or starter-image/ changed since
+  # the previous release (a non-breaking update re-pushes the same tag).
+  plan:
     runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      build: ${{ steps.plan.outputs.build }}
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v6
+      - uses: docker/login-action@v3
         with:
-          go-version-file: go.mod
-      - run: go test ./...
-        env:
-          DEV_NO_UPDATE: "1"
-      - uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser
-          version: "~> v2"
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: plan
+        run: |
+          v="$(tr -d '[:space:]' < starter-image/VERSION)"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
 
-  # Starter image: built natively per arch (arm64 on GitHub's arm runners, no
-  # QEMU), then merged into one multi-arch tag. The tag is the starter version
-  # from starter-image/VERSION (e.g. v1), not the dev release version. Pushing
-  # is idempotent: re-running a release re-pushes the same tag.
+          if docker buildx imagetools inspect "${STARTER_IMAGE}:${v}" >/dev/null 2>&1; then
+            exists=true
+          else
+            exists=false
+          fi
+
+          prev="$(git describe --tags --abbrev=0 --match 'v*' "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+          if [ -z "$prev" ]; then
+            changed=true   # first release
+          elif git diff --quiet "$prev" HEAD -- starter-image/; then
+            changed=false
+          else
+            changed=true
+          fi
+
+          build=false
+          if [ "$exists" = false ] || [ "$changed" = true ]; then
+            build=true
+          fi
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Starter image ${STARTER_IMAGE}:${v}"
+            echo "- on ghcr: $exists"
+            echo "- starter-image/ changed since ${prev:-(no previous release)}: $changed"
+            echo "- build: **$build**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Built natively per arch (arm64 on GitHub's arm runners, no QEMU), then
+  # merged into one multi-arch tag.
   starter-image:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
     strategy:
       fail-fast: true
       matrix:
@@ -55,8 +87,6 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v5
-      - id: ver
-        run: echo "version=$(tr -d '[:space:]' < starter-image/VERSION)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v5
         with:
           node-version: lts/*
@@ -69,16 +99,13 @@ jobs:
         run: |
           npx --yes @devcontainers/cli build \
             --workspace-folder starter-image \
-            --image-name "${STARTER_IMAGE}:${{ steps.ver.outputs.version }}-${{ matrix.arch }}" \
+            --image-name "${STARTER_IMAGE}:${{ needs.plan.outputs.version }}-${{ matrix.arch }}" \
             --push
 
   starter-image-manifest:
-    needs: starter-image
+    needs: [plan, starter-image]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
-      - id: ver
-        run: echo "version=$(tr -d '[:space:]' < starter-image/VERSION)" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
@@ -87,9 +114,50 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Create multi-arch manifest
         run: |
-          v="${{ steps.ver.outputs.version }}"
+          v="${{ needs.plan.outputs.version }}"
           docker buildx imagetools create \
             --tag "${STARTER_IMAGE}:${v}" \
             "${STARTER_IMAGE}:${v}-arm64" \
             "${STARTER_IMAGE}:${v}-amd64"
-          docker buildx imagetools inspect "${STARTER_IMAGE}:${v}"
+
+  goreleaser:
+    needs: [plan, starter-image-manifest]
+    # Run when the image was built, or when building was skipped because it's
+    # up to date; never after a failed image build.
+    if: >-
+      always() &&
+      needs.plan.result == 'success' &&
+      (needs.starter-image-manifest.result == 'success' || needs.starter-image-manifest.result == 'skipped')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check the starter image exists on ghcr
+        run: |
+          ref="${STARTER_IMAGE}:${{ needs.plan.outputs.version }}"
+          if ! docker buildx imagetools inspect "$ref"; then
+            echo "::error::$ref is not on ghcr; refusing to release a binary that points at it"
+            exit 1
+          fi
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      # Includes the test that starter-image/VERSION matches the StarterImage
+      # constant the binary embeds.
+      - run: go test ./...
+        env:
+          DEV_NO_UPDATE: "1"
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
