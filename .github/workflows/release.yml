@@ -1,0 +1,95 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      starter_image_only:
+        description: "Only build and push the starter image (skip the GoReleaser release)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  STARTER_IMAGE: ghcr.io/nicorobinreal/dev-starter
+
+jobs:
+  goreleaser:
+    if: github.event_name == 'push' || !inputs.starter_image_only
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+        env:
+          DEV_NO_UPDATE: "1"
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Starter image: built natively per arch (arm64 on GitHub's arm runners, no
+  # QEMU), then merged into one multi-arch tag. The tag is the starter version
+  # from starter-image/VERSION (e.g. v1), not the dev release version. Pushing
+  # is idempotent: re-running a release re-pushes the same tag.
+  starter-image:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+          - arch: amd64
+            runner: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: ver
+        run: echo "version=$(tr -d '[:space:]' < starter-image/VERSION)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: devcontainer build --push
+        run: |
+          npx --yes @devcontainers/cli build \
+            --workspace-folder starter-image \
+            --image-name "${STARTER_IMAGE}:${{ steps.ver.outputs.version }}-${{ matrix.arch }}" \
+            --push
+
+  starter-image-manifest:
+    needs: starter-image
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - id: ver
+        run: echo "version=$(tr -d '[:space:]' < starter-image/VERSION)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create multi-arch manifest
+        run: |
+          v="${{ steps.ver.outputs.version }}"
+          docker buildx imagetools create \
+            --tag "${STARTER_IMAGE}:${v}" \
+            "${STARTER_IMAGE}:${v}-arm64" \
+            "${STARTER_IMAGE}:${v}-amd64"
+          docker buildx imagetools inspect "${STARTER_IMAGE}:${v}"

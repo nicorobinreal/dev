@@ -1,0 +1,8 @@
+# Added by dev: keep this Include above all Host blocks.
+Include /HOME/.config/dev/ssh_config
+
+Include ~/.orbstack/ssh/config
+Include ~/.colima/ssh_config
+
+Host box
+  HostName 10.0.0.2

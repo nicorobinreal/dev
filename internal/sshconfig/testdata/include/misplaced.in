@@ -1,0 +1,5 @@
+Host box
+  HostName 10.0.0.2
+  Include ~/.config/dev/ssh_config
+
+Include /HOME/.config/dev/ssh_config

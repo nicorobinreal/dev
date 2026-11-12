@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: dev
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: dev
+    main: ./cmd/dev
+    binary: dev
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - arm64
+      - amd64
+    flags:
+      - -trimpath
+    # The "v" prefix makes main.version comparable with the release tag_name
+    # (internal/update). Snapshot builds get a pre-release suffix and never
+    # auto-update.
+    ldflags:
+      - -s -w -X main.version=v{{ .Version }}
+
+archives:
+  - id: dev
+    ids: [dev]
+    formats: [tar.gz]
+    # Must match update.AssetName and install.sh: dev_darwin_arm64.tar.gz
+    name_template: "dev_{{ .Os }}_{{ .Arch }}"
+    files:
+      - none*
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-SNAPSHOT-{{ .ShortCommit }}"
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "Merge pull request"
+      - "Merge branch"
+
+release:
+  github:
+    owner: nicorobinreal
+    name: dev

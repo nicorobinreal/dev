@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>dev.browser.shop.bridge</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/alice/.local/bin/dev</string>
+		<string>browser</string>
+		<string>bridge</string>
+		<string>--port</string>
+		<string>9301</string>
+		<string>--</string>
+		<string>npx</string>
+		<string>-y</string>
+		<string>chrome-devtools-mcp@latest</string>
+		<string>--autoConnect</string>
+	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>DEV_NO_UPDATE</key>
+		<string>1</string>
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+	<key>StandardOutPath</key>
+	<string>/Users/alice/.local/state/dev/logs/browser-shop-bridge.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/alice/.local/state/dev/logs/browser-shop-bridge.log</string>
+</dict>
+</plist>

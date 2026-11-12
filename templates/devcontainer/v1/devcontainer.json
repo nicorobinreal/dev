@@ -1,0 +1,28 @@
+// dev starter v1
+{
+  "name": "${localWorkspaceFolderBasename}",
+  // DEV_STARTER_IMAGE on the VM overrides the base image; unset uses the default in the Dockerfile
+  "build": { "dockerfile": "Dockerfile", "args": { "DEV_STARTER_IMAGE": "${localEnv:DEV_STARTER_IMAGE}" } },
+  // gh, sshd and docker-outside-of-docker are baked into the base image
+  "containerUser": "root",
+  "remoteUser": "root",
+  "runArgs": ["--network=host"],
+  "workspaceMount": "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind",
+  "workspaceFolder": "${localWorkspaceFolder}",
+  "mounts": [
+    "source=${localEnv:HOME}/.config/dev/gh,target=/run/secrets/gh,type=bind,readonly",
+    "source=${localEnv:HOME}/.config/dev/container-ssh,target=/run/secrets/ssh,type=bind,readonly",
+    "source=claude-${devcontainerId},target=/root/.claude-auth,type=volume",
+    "source=codex-${devcontainerId},target=/root/.codex,type=volume",
+    "source=opencode-${devcontainerId},target=/root/.local/share/opencode,type=volume",
+    "source=history-${devcontainerId},target=/commandhistory,type=volume"
+  ],
+  "containerEnv": {
+    "IS_SANDBOX": "1",
+    "CLAUDE_CONFIG_DIR": "/root/.claude-auth",
+    "HISTFILE": "/commandhistory/.bash_history"
+  },
+  "initializeCommand": "test -s $HOME/.config/dev/gh/token || (echo 'run dev up' && exit 1)",
+  "postCreateCommand": "git config --global url.https://github.com/.insteadOf git@github.com:",
+  "postStartCommand": "gh auth login --with-token < /run/secrets/gh/token && gh auth setup-git && /usr/local/bin/dev-sshd-keys"
+}

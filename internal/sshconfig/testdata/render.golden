@@ -1,0 +1,49 @@
+# managed by dev — do not edit; regenerate with `dev ssh-config`
+
+Host lima-api
+  IdentityFile "/HOME/.lima/_config/user"
+  User light
+  Hostname 127.0.0.1
+  Port 60123
+
+Host api-dev
+  HostName 127.0.0.1
+  Port 2222
+  User root
+  ProxyJump lima-api
+  IdentityFile /HOME/.lima/_config/user
+  IdentitiesOnly yes
+  HostKeyAlias api-dev
+  StrictHostKeyChecking accept-new
+  UserKnownHostsFile /HOME/.config/dev/known_hosts
+
+Host lima-shop
+  IdentityFile "/HOME/.lima/_config/user"
+  StrictHostKeyChecking no
+  UserKnownHostsFile /dev/null
+  NoHostAuthenticationForLocalhost yes
+  PreferredAuthentications publickey
+  Compression no
+  BatchMode yes
+  IdentitiesOnly yes
+  GSSAPIAuthentication no
+  Ciphers "^aes128-gcm@openssh.com,aes256-gcm@openssh.com"
+  User light
+  ControlMaster auto
+  ControlPath "/HOME/.lima/shop/ssh.sock"
+  ControlPersist yes
+  Hostname 127.0.0.1
+  Port 60022
+
+Host shop-dev
+  HostName 127.0.0.1
+  Port 2222
+  User root
+  ProxyJump lima-shop
+  IdentityFile /HOME/.lima/_config/user
+  IdentitiesOnly yes
+  HostKeyAlias shop-dev
+  StrictHostKeyChecking accept-new
+  UserKnownHostsFile /HOME/.config/dev/known_hosts
+
+# stopped: no Lima SSH config yet (start the VM, then run `dev ssh-config`)

@@ -1,0 +1,7 @@
+# my config
+Host github.com
+  User git
+  IdentityFile ~/.ssh/id_ed25519
+
+Host *
+  ServerAliveInterval 30

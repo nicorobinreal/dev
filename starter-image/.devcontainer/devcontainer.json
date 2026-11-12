@@ -1,0 +1,23 @@
+// Source of ghcr.io/nicorobinreal/dev-starter:vN, the base image of the dev
+// starter .devcontainer. Built and pushed with `devcontainer build --push`
+// (not `docker build`) so the features' settings (sshd and docker-init
+// entrypoints, the docker socket mount) travel in the image's
+// devcontainer.metadata label and apply to every project built FROM it.
+{
+  "name": "dev-starter",
+  "build": { "dockerfile": "../Dockerfile", "context": ".." },
+  "containerUser": "root",
+  "remoteUser": "root",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    // Listens on 2222; dev-sshd-keys installs the persisted host keys and
+    // authorized_keys at container start.
+    "ghcr.io/devcontainers/features/sshd:1": {},
+    // The VM runs Docker CE, so only the CLI and Compose are installed here;
+    // the feature bind-mounts the VM's /var/run/docker.sock.
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": { "moby": false }
+  },
+  "containerEnv": {
+    "IS_SANDBOX": "1"
+  }
+}

@@ -1,0 +1,5 @@
+Include ~/.orbstack/ssh/config
+Include /HOME/.config/dev/ssh_config
+
+Host box
+  HostName 10.0.0.2

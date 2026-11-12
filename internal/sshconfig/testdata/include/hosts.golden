@@ -1,0 +1,10 @@
+# Added by dev: keep this Include above all Host blocks.
+Include /HOME/.config/dev/ssh_config
+
+# my config
+Host github.com
+  User git
+  IdentityFile ~/.ssh/id_ed25519
+
+Host *
+  ServerAliveInterval 30
