@@ -43,6 +43,16 @@ var Requirements = []Requirement{
 		},
 	},
 	{
+		ID:    "git-config",
+		Title: "Mount the forwarded git config folder and include it from ~/.gitconfig",
+		Why:   "commits in the container use the Mac's git identity (user.name, user.email, init.defaultBranch); dev up re-syncs it and the folder mount picks up changes without a restart",
+		Starter: []string{
+			`"mounts": ["source=${localEnv:HOME}/.config/dev/git,target=/run/dev/git,type=bind,readonly"]`,
+			`"postCreateCommand": "... && git config --global --add include.path /run/dev/git/config"`,
+			`"initializeCommand": "mkdir -p $HOME/.config/dev/git && ..."`,
+		},
+	},
+	{
 		ID:    "sshd",
 		Title: "Run sshd on port 2222 with the persisted host keys and authorized_keys",
 		Why:   "the <name>-dev SSH host (Zed, the Claude and Codex desktop apps) connects straight into the container",

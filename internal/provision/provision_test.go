@@ -68,6 +68,7 @@ func identify(script string) string {
 		{StepClone, "git clone"},
 		{StepTailscale, "tailscale up"},
 		{StepContainerSSH, "ssh_host_ed25519_key"},
+		{StepGitConfig, "include.path"},
 	}
 	for _, m := range marks {
 		if strings.Contains(script, m.frag) {
@@ -108,7 +109,7 @@ func allIDs() []string {
 }
 
 func TestStepIDsStableAndUnique(t *testing.T) {
-	want := "base-packages docker git-gh node-devcontainer-cli gh-token clone tailscale container-ssh"
+	want := "base-packages docker git-gh node-devcontainer-cli gh-token clone tailscale container-ssh git-config"
 	if got := strings.Join(allIDs(), " "); got != want {
 		t.Fatalf("step order/IDs changed:\n got %s\nwant %s", got, want)
 	}
@@ -145,7 +146,7 @@ func TestRunIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "git-gh node-devcontainer-cli clone tailscale container-ssh"
+	want := "git-gh node-devcontainer-cli clone tailscale container-ssh git-config"
 	if strings.Join(ran, " ") != want || strings.Join(vm.ran, " ") != want {
 		t.Fatalf("ran %v / executed %v, want %s", ran, vm.ran, want)
 	}
@@ -228,7 +229,7 @@ func TestMissing(t *testing.T) {
 	for _, s := range miss {
 		ids = append(ids, s.ID)
 	}
-	if strings.Join(ids, " ") != "docker git-gh node-devcontainer-cli gh-token tailscale container-ssh" {
+	if strings.Join(ids, " ") != "docker git-gh node-devcontainer-cli gh-token tailscale container-ssh git-config" {
 		t.Fatalf("missing = %v", ids)
 	}
 	none, _ := Missing(context.Background(), &fakeVM{recorded: allIDs()})

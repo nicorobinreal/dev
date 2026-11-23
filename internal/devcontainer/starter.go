@@ -28,7 +28,7 @@ const Dir = ".devcontainer"
 const RootFile = ".devcontainer.json"
 
 // StarterImage is the published base image of the latest starter.
-const StarterImage = "ghcr.io/nicorobinreal/dev-starter:v1"
+const StarterImage = "ghcr.io/nicorobinreal/dev-starter:v2"
 
 // StarterImageEnv names the environment variable that overrides the starter's
 // base image. devcontainer.json passes ${localEnv:DEV_STARTER_IMAGE} as a build
@@ -43,6 +43,7 @@ var registry = []struct {
 	Hash    string
 }{
 	{1, "cba8e30868686f5fb5f969cc9c0843e92be7e90d0d03a42f90f9914ac307dccd"},
+	{2, "28af1e57280f18e0d61463c54106892bde81b753c97d3f85482c0e1efbe32271"},
 }
 
 // Starter is one released starter version.

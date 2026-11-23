@@ -74,7 +74,7 @@ func TestRequirements(t *testing.T) {
 		}
 		seen[r.ID] = true
 	}
-	for _, id := range []string{"host-network", "workspace-path", "gh-token", "sshd", "auth-volumes"} {
+	for _, id := range []string{"host-network", "workspace-path", "gh-token", "git-config", "sshd", "auth-volumes"} {
 		if !seen[id] {
 			t.Errorf("missing requirement %s", id)
 		}

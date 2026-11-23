@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/nicorobinreal/dev/internal/gh"
+	"github.com/nicorobinreal/dev/internal/gitconfig"
 )
 
 // Stable step IDs. Append-only once released.
@@ -20,6 +21,7 @@ const (
 	StepClone        = "clone"
 	StepTailscale    = "tailscale"
 	StepContainerSSH = "container-ssh"
+	StepGitConfig    = "git-config"
 )
 
 // Image bumps: lima pins the Ubuntu cloud image for new VMs. When it is bumped
@@ -103,6 +105,17 @@ func Steps() []Step {
 			ID:          StepContainerSSH,
 			Description: "persistent sshd host keys and authorized_keys for the container",
 			Script:      containerSSHScript,
+		},
+		{
+			ID:          StepGitConfig,
+			Description: "git identity from the Mac in ~/.config/dev/git/config",
+			Script: func(p Params) (string, error) {
+				body, err := gitconfig.SyncScript(p.GitConfig)
+				if err != nil {
+					return "", err
+				}
+				return prelude + body, nil
+			},
 		},
 	}
 }

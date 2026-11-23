@@ -81,7 +81,7 @@ Global flags for every command: `--json`, `--dry-run`, `--verbose`.
 | Command | What it does | Flags |
 | --- | --- | --- |
 | `dev new <name> --repo <url>` | Create the VM, provision it, clone the repo, join the tailnet, write a starter `.devcontainer/` if the repo has none, start the devcontainer, write SSH config, open the editor | `--branch <branch>`, `--cpus <n>`, `--memory <size>` (e.g. `8GiB`), `--disk <size>`, `--no-open`, `--editor code\|cursor\|zed` |
-| `dev up <name>` | Start the VM, re-sync the gh token, start the devcontainer, refresh the container's gh login | `--no-open` |
+| `dev up <name>` | Start the VM, re-sync the gh token and git config, start the devcontainer, refresh the container's gh login | `--no-open` |
 | `dev down <name>` | Revoke browser access and stop the VM (stops the container and compose services) | |
 | `dev rebuild <name>` | Rebuild the devcontainer after `.devcontainer/` changes | `--no-cache` |
 | `dev rm <name>` | Delete the VM, its tailnet node and SSH entries. Refuses (exit 2) with uncommitted or unpushed work | `--force` |
@@ -167,9 +167,16 @@ Requirements (the starter's settings that provide each):
   and log in on every start: `"postStartCommand": "gh auth login --with-token < /run/secrets/gh/token && gh auth setup-git"`
   (plus `"postCreateCommand": "git config --global url.https://github.com/.insteadOf git@github.com:"`).
   The image needs `gh`.
+- **git-config**: mount `source=${localEnv:HOME}/.config/dev/git,target=/run/dev/git,type=bind,readonly`,
+  create the folder first (`"initializeCommand": "mkdir -p $HOME/.config/dev/git && ..."`)
+  and include it: append `&& git config --global --add include.path /run/dev/git/config`
+  to `postCreateCommand`. It holds the Mac's `user.name`, `user.email` and
+  `init.defaultBranch`, which `dev up` re-syncs. Don't mount it at
+  `~/.config/git`: `git config --global` writes there when `~/.gitconfig` doesn't
+  exist yet. Without it, commits in the container have no identity.
 - **sshd**: sshd on port 2222 using the persisted keys mounted from
   `source=${localEnv:HOME}/.config/dev/container-ssh,target=/run/secrets/ssh,type=bind,readonly`.
-  Easiest: build `FROM ghcr.io/nicorobinreal/dev-starter:v1` (it has the sshd
+  Easiest: build `FROM ghcr.io/nicorobinreal/dev-starter:v2` (it has the sshd
   feature and `/usr/local/bin/dev-sshd-keys`) and append `&& /usr/local/bin/dev-sshd-keys`
   to `postStartCommand`. Needed for the `<name>-dev` SSH host (Zed, the Claude
   and Codex desktop apps).
@@ -191,3 +198,8 @@ allows it.
 - `docker` talks to the VM's Docker daemon; `gh` and `git` are logged in with
   the user's GitHub token over HTTPS (SSH-style GitHub URLs are rewritten).
 - If gh says the token is invalid, run `dev up <name> --json` to re-sync it.
+- Commits use the Mac's git identity (`user.name`, `user.email`,
+  `init.defaultBranch` from its global config), forwarded by `dev new` and
+  re-synced by every `dev up`. If it's missing, the project's devcontainer
+  lacks the **git-config** mount (e.g. a starter v1); don't set it in the repo's
+  `.git/config` unless the user asks.

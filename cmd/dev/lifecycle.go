@@ -13,6 +13,7 @@ import (
 
 	"github.com/nicorobinreal/dev/internal/devcontainer"
 	"github.com/nicorobinreal/dev/internal/gh"
+	"github.com/nicorobinreal/dev/internal/gitconfig"
 	"github.com/nicorobinreal/dev/internal/lima"
 	"github.com/nicorobinreal/dev/internal/provision"
 	"github.com/nicorobinreal/dev/internal/run"
@@ -45,11 +46,23 @@ func (a *App) provisionParams(ctx context.Context, p state.Project, token string
 		TailscaleHostname: p.TailscaleHost,
 		TailscaleTag:      a.Config.TailscaleTag,
 		LimaPubKey:        pub,
+		GitConfig:         a.hostGitConfig(ctx),
 		TailscaleAuthKey: func(ctx context.Context) (string, error) {
 			return a.tsClient().MintAuthKey(ctx, tailscale.AuthKeyOptions{Tag: a.Config.TailscaleTag, Hostname: p.TailscaleHost})
 		},
 		Progress: func(s provision.Step) { a.Notef("  • %s\n", s.Description) },
 	}, nil
+}
+
+// hostGitConfig reads the Mac's forwarded git settings. A failure is a
+// warning: the VM gets an empty file and git there asks for an identity.
+func (a *App) hostGitConfig(ctx context.Context) []gitconfig.Entry {
+	entries, err := gitconfig.Host(ctx, a.Runner)
+	if err != nil {
+		a.Notef("warning: not forwarding git config: %v\n", err)
+		return nil
+	}
+	return entries
 }
 
 // runProvision runs missing (or only the given) steps and resets the SSH
@@ -252,7 +265,7 @@ func newUpCmd(a *App) *cobra.Command {
 	var noOpen bool
 	cmd := &cobra.Command{
 		Use:   "up <name>",
-		Short: "Start the VM, re-sync the gh token, start the devcontainer, refresh its gh login",
+		Short: "Start the VM, re-sync the gh token and git config, start the devcontainer, refresh its gh login",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -303,6 +316,10 @@ func newUpCmd(a *App) *cobra.Command {
 			}
 			a.Notef("syncing gh token…\n")
 			if err := gh.SyncVM(ctx, a.vm(p), token); err != nil {
+				return err
+			}
+			a.Notef("syncing git config…\n")
+			if err := gitconfig.SyncVM(ctx, a.vm(p), a.hostGitConfig(ctx)); err != nil {
 				return err
 			}
 			if p.Devcontainer == "" {

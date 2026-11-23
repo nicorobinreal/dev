@@ -14,6 +14,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/nicorobinreal/dev/internal/gitconfig"
 	"github.com/nicorobinreal/dev/internal/run"
 )
 
@@ -42,6 +43,10 @@ type Params struct {
 	TailscaleTag      string // e.g. tag:devvm
 
 	LimaPubKey string // contents of ~/.lima/_config/user.pub
+
+	// GitConfig is the Mac's forwarded git settings (gitconfig.Host); empty
+	// still writes an empty file for the container's bind mount.
+	GitConfig []gitconfig.Entry
 
 	// Progress, if set, is called before each step runs.
 	Progress func(Step)

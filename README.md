@@ -176,6 +176,7 @@ A custom devcontainer needs the following for `dev` to work fully:
 - host networking
 - the workspace mounted at the same path as on the VM
 - the gh token mount
+- the git config mount (your Mac's git name, email and default branch)
 - sshd on port 2222 with `dev`'s persisted host keys
 - the agent login volumes
 

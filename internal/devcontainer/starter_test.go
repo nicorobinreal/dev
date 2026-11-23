@@ -98,6 +98,7 @@ func TestStarterDevcontainerJSON(t *testing.T) {
 		Mounts           []string          `json:"mounts"`
 		ContainerEnv     map[string]string `json:"containerEnv"`
 		PostStartCommand string            `json:"postStartCommand"`
+		PostCreateCmd    string            `json:"postCreateCommand"`
 	}
 	if err := json.Unmarshal(stripJSONC(Latest().Files["devcontainer.json"]), &c); err != nil {
 		t.Fatalf("devcontainer.json is not valid JSONC: %v", err)
@@ -117,13 +118,18 @@ func TestStarterDevcontainerJSON(t *testing.T) {
 		t.Errorf("workspace path not preserved: %q %q", c.WorkspaceMount, c.WorkspaceFolder)
 	}
 	mounts := strings.Join(c.Mounts, "\n")
-	for _, want := range []string{"target=/run/secrets/gh", "target=/run/secrets/ssh", "target=/root/.claude-auth", "target=/root/.codex", "target=/root/.local/share/opencode", "target=/commandhistory"} {
+	for _, want := range []string{"target=/run/secrets/gh", "target=/run/secrets/ssh", "target=/root/.claude-auth", "target=/root/.codex", "target=/root/.local/share/opencode", "target=/commandhistory", "target=/run/dev/git"} {
 		if !strings.Contains(mounts, want) {
 			t.Errorf("missing mount %s", want)
 		}
 	}
 	if c.ContainerEnv["IS_SANDBOX"] != "1" || c.ContainerEnv["CLAUDE_CONFIG_DIR"] != "/root/.claude-auth" {
 		t.Errorf("containerEnv = %v", c.ContainerEnv)
+	}
+	// The forwarded git config is included, not mounted at git's XDG path
+	// (git config --global would write to that read-only file).
+	if !strings.Contains(c.PostCreateCmd, "include.path /run/dev/git/config") || strings.Contains(mounts, "/.config/git") {
+		t.Errorf("git config not wired by include: postCreateCommand = %q", c.PostCreateCmd)
 	}
 	if !strings.Contains(c.PostStartCommand, "/usr/local/bin/dev-sshd-keys") {
 		t.Errorf("postStartCommand = %q", c.PostStartCommand)
@@ -201,6 +207,8 @@ func TestDetect(t *testing.T) {
 	}
 	withRoot := prefixed(Latest().Files)
 	withRoot[RootFile] = []byte("{}")
+	v1 := prefixed(Starters()[0].Files)
+	latest := Latest().Label()
 
 	cases := []struct {
 		name    string
@@ -212,12 +220,13 @@ func TestDetect(t *testing.T) {
 		{"nil", nil, KindNone, 0, ""},
 		{"empty", map[string][]byte{}, KindNone, 0, ""},
 		{"unrelated", map[string][]byte{"README.md": []byte("hi")}, KindNone, 0, ""},
-		{"starter", starter, KindStarter, Latest().Version, "starter-v1"},
-		{"dot-slash", dotSlash, KindStarter, Latest().Version, "starter-v1"},
+		{"starter", starter, KindStarter, Latest().Version, latest},
+		{"dot-slash", dotSlash, KindStarter, Latest().Version, latest},
+		{"older starter", v1, KindStarter, 1, "starter-v1"},
 		{"modified", modified, KindCustom, 0, "custom"},
 		{"extra file", extra, KindCustom, 0, "custom"},
 		{"root json only", map[string][]byte{RootFile: []byte("{}")}, KindCustom, 0, "custom"},
-		{"starter wins over root json", withRoot, KindStarter, 1, "starter-v1"},
+		{"starter wins over root json", withRoot, KindStarter, Latest().Version, latest},
 		{"symlink", map[string][]byte{Dir: []byte("\x00symlink -> elsewhere")}, KindCustom, 0, "custom"},
 	}
 	for _, c := range cases {

@@ -1,6 +1,7 @@
 package devcontainer
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -52,9 +53,10 @@ func TestWriteStarterScriptRendersTemplates(t *testing.T) {
 		t.Fatalf("StarterWritten(%q) = %v, %v", out, ok, err)
 	}
 	got := readDir(t, filepath.Join(ws, Dir))
-	want := readDir(t, filepath.Join("..", "..", "templates", "devcontainer", "v1"))
+	latest := fmt.Sprintf("v%d", Latest().Version)
+	want := readDir(t, filepath.Join("..", "..", "templates", "devcontainer", latest))
 	if !reflect.DeepEqual(got, want) {
-		t.Errorf("rendered starter differs from templates/devcontainer/v1")
+		t.Errorf("rendered starter differs from templates/devcontainer/%s", latest)
 	}
 	st, err := os.Stat(filepath.Join(ws, Dir))
 	if err != nil || st.Mode().Perm() != 0o755 {
@@ -126,7 +128,7 @@ func TestReadScriptRoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if k, v := Detect(files); k != KindStarter || v != 1 {
+		if k, v := Detect(files); k != KindStarter || v != Latest().Version {
 			t.Errorf("Detect = %s %d, files %v", k, v, keys(files))
 		}
 	})

@@ -44,7 +44,7 @@ Every project has a short name, used by all commands and for everything local to
 | Command | What it does | Flags |
 | --- | --- | --- |
 | `dev new <name> --repo <url>` | Create VM, provision, clone repo, join tailnet, write starter `.devcontainer` if none exists, start the devcontainer, write SSH config, open the editor | `--branch`, `--cpus`, `--memory`, `--disk`, `--no-open`, `--editor code\|cursor\|zed` |
-| `dev up <name>` | Start VM, re-sync the gh token, start the devcontainer (`devcontainer up`), refresh the container's gh login | `--no-open` |
+| `dev up <name>` | Start VM, re-sync the gh token and git config, start the devcontainer (`devcontainer up`), refresh the container's gh login | `--no-open` |
 | `dev down <name>` | Revoke browser access, stop the VM (stops the container and compose services with it) |  |
 | `dev rebuild <name>` | Rebuild the devcontainer after config changes (also possible from VS Code, see `dev open`) | `--no-cache` |
 | `dev rm <name>` | Refuse if there is uncommitted or unpushed work; revoke browser access, delete the VM, remove the tailnet node and SSH config entries | `--force` |
@@ -96,10 +96,11 @@ Every project has a short name, used by all commands and for everything local to
 6. Clone the repo to `$HOME/<repo>` over HTTPS.
 7. Tailscale, joined as `<machine>-<name>` with a freshly minted auth key (see Credentials).
 8. sshd host keys and `authorized_keys` for the container written to `~/.config/dev/container-ssh/`.
+9. Git identity from the Mac (`user.name`, `user.email`, `init.defaultBranch` from its global config, nothing else) written to `~/.config/dev/git/config`, which the VM's `~/.gitconfig` includes.
 
 The VM records the IDs of every step it has run in `/etc/dev/provision-steps` (one per line), not just the highest number, so steps can be added in any order during development. `dev upgrade` runs any known step missing from that file. A later optimisation: provision once into a base VM and copy it for each `dev new`.
 
-The token write in step 5 is also repeated on every `dev up` (see Credentials); that re-sync is a normal `up` action, not a provisioning step.
+The token write in step 5 and the git config write in step 9 are also repeated on every `dev up` (see Credentials); that re-sync is a normal `up` action, not a provisioning step.
 
 ## Credentials
 
@@ -110,6 +111,7 @@ All credentials are full-access. There are no per-project scopes and no extra fl
 | GitHub (git + gh) | `gh auth token` from the host's gh login | `dev new` and every `dev up` write it to `~/.config/dev/gh/token` (600) and refresh the VM's gh login | The folder `~/.config/dev/gh/` is bind-mounted read-only at `/run/secrets/gh`; `postStartCommand` logs gh in from it on every container start, and `dev up` runs the same login via `devcontainer exec` |
 | Tailscale | OAuth client ID and secret in the macOS Keychain (does not expire) | Single-use, pre-authorized, tagged auth key minted per VM; the node stays joined across restarts | Not needed (host networking) |
 | Agent logins (Claude, Codex, OpenCode) | Nothing | Nothing | You log in inside the container once; auth persists in named volumes |
+| Git identity (not a credential, forwarded the same way) | `user.name`, `user.email`, `init.defaultBranch` from the global git config | `dev new` and every `dev up` write `~/.config/dev/git/config` (644), included from the VM's `~/.gitconfig` | The folder `~/.config/dev/git/` is bind-mounted read-only at `/run/dev/git`; `postCreateCommand` adds `include.path /run/dev/git/config` to the container's `~/.gitconfig` |
 | Container SSH (for Claude/Codex apps and `<name>-dev`) | Lima's own key, `~/.lima/_config/user` | `~/.config/dev/container-ssh/authorized_keys` (Lima's public key) + persistent host keys | Bind-mounted into sshd |
 
 **gh token details**
@@ -149,7 +151,7 @@ All credentials are full-access. There are no per-project scopes and no extra fl
 
 1. **No `.devcontainer/`** → write the starter, start the container.
 2. **`.devcontainer/` matches a known starter version** (e.g. the same project cloned on another Mac) → start the container.
-3. **Anything else** → leave it untouched and start it anyway. The output (and `--json`) flags it as a custom devcontainer that may lack what `dev` relies on (host network, same workspace path, gh token mount, sshd, auth volumes), so some features may not work. When `new` was run through the skill, the harness then reads the existing `.devcontainer/` (`dev exec <name> --vm -- cat ...`) and suggests how to merge in the starter's requirements.
+3. **Anything else** → leave it untouched and start it anyway. The output (and `--json`) flags it as a custom devcontainer that may lack what `dev` relies on (host network, same workspace path, gh token mount, git config mount, sshd, auth volumes), so some features may not work. When `new` was run through the skill, the harness then reads the existing `.devcontainer/` (`dev exec <name> --vm -- cat ...`) and suggests how to merge in the starter's requirements.
 
 **Detecting a known starter:** the binary embeds the SHA-256 of `.devcontainer/` contents for every released starter version. `devcontainer.json` starts with a `// dev starter vN` comment so a person can see it too.
 
@@ -158,7 +160,7 @@ All credentials are full-access. There are no per-project scopes and no extra fl
 **Starter `devcontainer.json` (sketch):**
 
 ```jsonc
-// dev starter v1
+// dev starter v2
 {
   "name": "${localWorkspaceFolderBasename}",
   "build": { "dockerfile": "Dockerfile" },
@@ -171,6 +173,7 @@ All credentials are full-access. There are no per-project scopes and no extra fl
   "mounts": [
     "source=${localEnv:HOME}/.config/dev/gh,target=/run/secrets/gh,type=bind,readonly",
     "source=${localEnv:HOME}/.config/dev/container-ssh,target=/run/secrets/ssh,type=bind,readonly",
+    "source=${localEnv:HOME}/.config/dev/git,target=/run/dev/git,type=bind,readonly",
     "source=claude-${devcontainerId},target=/root/.claude-auth,type=volume",
     "source=codex-${devcontainerId},target=/root/.codex,type=volume",
     "source=opencode-${devcontainerId},target=/root/.local/share/opencode,type=volume",
@@ -181,8 +184,8 @@ All credentials are full-access. There are no per-project scopes and no extra fl
     "CLAUDE_CONFIG_DIR": "/root/.claude-auth",
     "HISTFILE": "/commandhistory/.bash_history"
   },
-  "initializeCommand": "test -s $HOME/.config/dev/gh/token || (echo 'run dev up' && exit 1)",
-  "postCreateCommand": "git config --global url.https://github.com/.insteadOf git@github.com:",
+  "initializeCommand": "mkdir -p $HOME/.config/dev/git && (test -s $HOME/.config/dev/gh/token || (echo 'run dev up' && exit 1))",
+  "postCreateCommand": "git config --global url.https://github.com/.insteadOf git@github.com: && git config --global --add include.path /run/dev/git/config",
   "postStartCommand": "gh auth login --with-token < /run/secrets/gh/token && gh auth setup-git && /usr/local/bin/dev-sshd-keys"
 }
 ```
@@ -191,11 +194,12 @@ All credentials are full-access. There are no per-project scopes and no extra fl
 
 - **Same workspace path as the VM.** Compose bind mounts (`./src:/app`) are resolved by the VM's Docker daemon, so the container must see the repo at the identical path.
 - **Host networking.** Compose services' published ports are on `localhost` for agents and the dev server; the container sshd listens on port 2222 on the VM.
-- **`initializeCommand`** runs on the VM and fails fast with a clear message when the token file is missing.
+- **`initializeCommand`** runs on the VM and fails fast with a clear message when the token file is missing. It also creates `~/.config/dev/git/` so the git config mount has a source on a VM that hasn't run the `git-config` step yet.
+- **Git config by include, folder mount.** Mounting `/root/.gitconfig` read-only would break `gh auth setup-git`, which writes there. Git's XDG file (`~/.config/git/config`) doesn't work either: `git config --global` writes to it when `~/.gitconfig` doesn't exist yet, so the first `postCreateCommand` write fails on the read-only mount. So the folder is mounted at `/run/dev/git` and included from `~/.gitconfig`. It is a folder, not the file, for the same inode reason as the gh token, so a `dev up` re-sync shows up in a running container.
 - **gh login in `postStartCommand`** (not `postCreateCommand`), so every container start picks up the current token.
 - **`dev-sshd-keys`** (small script in the image) points sshd at the persisted host keys and installs `authorized_keys`, so rebuilds don't change the container's SSH identity.
 
-**Starter `Dockerfile`:** `FROM ghcr.io/nicorobinreal/dev-starter:v1`, with room for project-specific lines below it. The prebuilt image runs as root only (no `vscode` user) and holds a Debian base, Node LTS, Go, Claude Code, Codex, OpenCode, the baked-in features and `dev-sshd-keys`. A new VM pulls it in seconds; only lines a project adds are built locally. Logins happen inside the container and persist in the volumes above. `DEV_STARTER_IMAGE` overrides the image (used by e2e before the image is published).
+**Starter `Dockerfile`:** `FROM ghcr.io/nicorobinreal/dev-starter:v2`, with room for project-specific lines below it. The prebuilt image runs as root only (no `vscode` user) and holds a Debian base, Node LTS, Go, Claude Code, Codex, OpenCode, the baked-in features and `dev-sshd-keys`. A new VM pulls it in seconds; only lines a project adds are built locally. Logins happen inside the container and persist in the volumes above. `DEV_STARTER_IMAGE` overrides the image (used by e2e before the image is published).
 
 **Harnesses run without approval prompts** (the VM is the security boundary):
 
@@ -270,7 +274,7 @@ A public GitHub repo, `github.com/nicorobinreal/dev`; releases are built by GoRe
 
 **Reloading after a skill change:** Claude Code watches existing skill files and picks up edits on its own; only new skill folders need a reload. Since updates only edit the existing `dev` skill, Claude Code needs nothing. For other harnesses, when the skill's hash changed, print `skill updated — reload skills in <harness>` on the next run.
 
-**What the skill tells the harness:** when to use `dev`; to always pass `--json`; how to read the output; that after `dev new` reports a custom `.devcontainer`, it should read it from the VM (`dev exec <name> --vm -- cat ...`), compare it with the starter's requirements (host network, same workspace path, gh token mount, sshd, auth volumes) and suggest a merge to the user.
+**What the skill tells the harness:** when to use `dev`; to always pass `--json`; how to read the output; that after `dev new` reports a custom `.devcontainer`, it should read it from the VM (`dev exec <name> --vm -- cat ...`), compare it with the starter's requirements (host network, same workspace path, gh token mount, git config mount, sshd, auth volumes) and suggest a merge to the user.
 
 ## Cross-cutting concerns
 
